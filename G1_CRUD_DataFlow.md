@@ -18,6 +18,7 @@ sequenceDiagram
     FE-->>User: Render table/list
 ```
 # UPDATE
+
 ```mermaid
 sequenceDiagram
     participant User as User (Browser)
@@ -34,4 +35,3 @@ sequenceDiagram
     Service-->>BE: 200 OK {updatedResource}
     BE-->>FE: JSON updated resource
     FE-->>User: Show updated data
-    ```
