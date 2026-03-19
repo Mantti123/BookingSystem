@@ -16,4 +16,3 @@ sequenceDiagram
     Service-->>BE: 200 OK {resources}
     BE-->>FE: JSON data
     FE-->>User: Render table/list
-``
