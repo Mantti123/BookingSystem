@@ -1,3 +1,4 @@
+´´´markdown
 # READ
 
 ```mermaid
@@ -17,8 +18,9 @@ sequenceDiagram
     BE-->>FE: JSON data
     FE-->>User: Render table/list
 
-
+´´´markdown
 #UPDATE
+´´´mermaid
 sequenceDiagram
     participant User as User (Browser)
     participant FE as Frontend (resources.js / form.js)
