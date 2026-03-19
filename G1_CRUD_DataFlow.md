@@ -18,7 +18,7 @@ sequenceDiagram
     FE-->>User: Render table/list
 ```
 # UPDATE
-´´´mermaid
+```mermaid
 sequenceDiagram
     participant User as User (Browser)
     participant FE as Frontend (resources.js / form.js)
@@ -34,4 +34,4 @@ sequenceDiagram
     Service-->>BE: 200 OK {updatedResource}
     BE-->>FE: JSON updated resource
     FE-->>User: Show updated data
-    ´´´
+    ```
