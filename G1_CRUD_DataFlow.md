@@ -1,8 +1,5 @@
 # READ
 
-```markdown
-# READ
-
 ```mermaid
 sequenceDiagram
     participant User as User (Browser)
@@ -19,3 +16,4 @@ sequenceDiagram
     Service-->>BE: 200 OK {resources}
     BE-->>FE: JSON data
     FE-->>User: Render table/list
+``
