@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reservations</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background: #f5f5f5;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: auto;
+    }
+
+    .card {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    .error {
+      color: red;
+      margin-top: 10px;
+    }
+
+    .loading {
+      color: #555;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <h1>Your Reservations</h1>
+
+    <div id="status" class="loading">Loading reservations...</div>
+    <div id="reservations-list"></div>
+  </div>
+
+  <script>
+    async function loadReservations() {
+      const statusEl = document.getElementById("status");
+      const listEl = document.getElementById("reservations-list");
+
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        statusEl.textContent = "Authentication required. Please sign in first.";
+        statusEl.className = "error";
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/reservations", {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Accept": "application/json"
+          },
+          cache: "no-store"
+        });
+
+        const result = await res.json().catch(() => null);
+
+        if (!res.ok || !result || result.ok !== true) {
+          statusEl.textContent = `Failed to load reservations (HTTP ${res.status})`;
+          statusEl.className = "error";
+          console.log("API error:", result);
+          return;
+        }
+
+        const data = Array.isArray(result.data) ? result.data : [];
+
+        if (data.length === 0) {
+          statusEl.textContent = "No reservations found.";
+          return;
+        }
+
+        statusEl.style.display = "none";
+
+        listEl.innerHTML = data.map(r => `
+          <div class="card">
+            <h3>${r.resource_name ?? "Resource"}</h3>
+            <p><b>Start:</b> ${r.start_time ? new Date(r.start_time).toLocaleString() : "-"}</p>
+            <p><b>End:</b> ${r.end_time ? new Date(r.end_time).toLocaleString() : "-"}</p>
+            <p><b>Status:</b> ${r.status ?? "-"}</p>
+            ${r.note ? `<p><b>Note:</b> ${r.note}</p>` : ""}
+          </div>
+        `).join("");
+
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Error loading reservations";
+        statusEl.className = "error";
+      }
+    }
+
+    loadReservations();
+  </script>
+
+</body>
+</html>
