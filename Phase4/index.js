@@ -1,78 +1,153 @@
 require("dotenv").config();
+const crypto = require('crypto');
 const express = require("express");
 const app = express();
-const PORT = process.env.IPORT || 5000;
-const path = require("path");
-const { Pool } = require("pg");
-const { body, validationResult } = require("express-validator");
+const PORT = process.env.IPORT;
+const path = require('path');
+const { Pool } = require('pg');
+const { body, validationResult } = require('express-validator');
 
-// --- Middleware ---
-app.use(express.json());
-
-// Serve public folder
-app.use(express.static(path.join(__dirname, "public")));
-
-// --- Views ---
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
-app.get("/resources", (req, res) => res.sendFile(path.join(__dirname, "public", "resources.html")));
-
-// --- DB Pool ---
-const pool = new Pool({
-  host: process.env.PGHOST || "database",
-  user: process.env.PGUSER,
-  password: process.env.PGPASSWORD,
-  database: process.env.PGDATABASE,
-  port: process.env.PGPORT || 5432,
-});
-
-// --- Wait for DB ---
-async function waitForDb(retries = 10, delay = 2000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await pool.query("SELECT 1");
-      console.log("✅ Database connection established!");
-      return;
-    } catch (err) {
-      console.log(`⚠️ DB not ready, retrying in ${delay}ms... (${i + 1}/${retries})`);
-      await new Promise(r => setTimeout(r, delay));
-    }
-  }
-  console.error("❌ Could not connect to database. Exiting.");
-  process.exit(1);
+// Timestamp
+function timestamp() {
+  const now = new Date();
+  return now.toISOString().replace('T', ' ').replace('Z', '');
 }
 
-// --- Validation ---
+// --- Middleware ---
+app.use(express.json()); // Parse application/json
+
+// Serve everything in ./public as static assets
+const publicDir = path.join(__dirname, "public");
+app.use(express.static(publicDir));
+
+// --- Views (HTML pages) ---
+// GET / -> serve index.html
+app.get("/", (req, res) => {
+  res.sendFile(path.join(publicDir, "index.html"));
+});
+
+// Optional: GET /resources -> serve resources.html directly
+app.get('/resources', (req, res) => {
+  res.sendFile(path.join(publicDir, 'resources.html'));
+});
+
+// --- Postgres pool (reads PG* from .env) ---
+const pool = new Pool({});
+
+// --- express-validator rules for the payload ---
 const resourceValidators = [
-  body("action").exists().isIn(["create"]),
-  body("resourceName").exists().isString().isLength({ min: 3, max: 100 }).trim().escape(),
-  body("resourceDescription").exists().isString().isLength({ min: 10, max: 50 }).trim(),
-  body("resourceAvailable").exists().isBoolean().toBoolean(),
-  body("resourcePrice").exists().isFloat({ min: 0 }).toFloat(),
-  body("resourcePriceUnit").exists().isString().isIn(["hour", "day"]),
+  body('action')
+    .exists({ checkFalsy: true }).withMessage('action is required')
+    .trim()
+    .equals('create')
+    .withMessage("Only 'create' is supported"),
+
+  body('resourceName')
+  .exists({ checkFalsy: true }).withMessage('resourceName is required')
+  .isString().withMessage('resourceName must be string')
+  .isLength({ min: 5, max: 30 })
+  .withMessage('resourceName must be 5-30 characters')
+  .matches(/^[A-Za-z0-9 ]+$/)
+  .withMessage('resourceName must contain only letters, numbers and spaces')
+  .trim()
+  .escape(),
+
+  body('resourceDescription')
+  .exists({ checkFalsy: true }).withMessage('resourceDescription is required')
+  .isString().withMessage('resourceDescription must be a string')
+  .isLength({ min: 10, max: 50 })
+  .withMessage('resourceDescription must be 10-50 characters')
+  .matches(/^[A-Za-z0-9 ]+$/)
+  .withMessage('resourceDescription must contain only letters, numbers and spaces')
+  .trim()
+  .escape(),
+
+  body('resourceAvailable')
+  .exists().withMessage('resourceAvailable is required')
+  .isBoolean().withMessage('resourceAvailable must be boolean')
+  .toBoolean(),
+
+  body('resourcePrice')
+    .exists({ checkFalsy: true }).withMessage('resourcePrice is required')
+    .isFloat({ min: 0 }).withMessage('resourcePrice must be a non-negative number')
+    .toFloat(), // coercion
+
+  body('resourcePriceUnit')
+    .exists({ checkFalsy: true }).withMessage('resourcePriceUnit is required')
+    .isString().withMessage('resourcePriceUnit must be a string')
+    .trim()
+    .isIn(['hour', 'day', 'week', 'month'])
+    .withMessage("resourcePriceUnit must be 'hour', 'day', 'week', or 'month'"),
 ];
 
-// --- Routes ---
-app.post("/api/resources", resourceValidators, async (req, res) => {
+// POST /api/resources -> create (minimal)
+app.post('/api/resources', resourceValidators, async (req, res) => {
+  // Validate input
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ ok: false, errors: errors.array() });
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      ok: false,
+      errors: errors.array().map(e => ({ field: e.path, msg: e.msg })),
+    });
+  }
 
-  const { action, resourceName, resourceDescription, resourceAvailable, resourcePrice, resourcePriceUnit } = req.body;
+  // Pull normalized values (coerced by express-validator .toBoolean/.toFloat)
+  let {
+    action = '',
+    resourceName = '',
+    resourceDescription = '',
+    resourceAvailable = false,
+    resourcePrice = 0,
+    resourcePriceUnit = ''
+  } = req.body;
 
-  const insertSql = `
-    INSERT INTO resources (resourcename, resourcedescription, resourceavailable, resourceprice, resourcepriceunit, created_at)
-    VALUES ($1,$2,$3,$4,$5, NOW())
-    RETURNING *;
-  `;
+  // Log (optional)
+  console.log("The client's POST request ", `[${timestamp()}]`);
+  console.log('------------------------------');
+  console.log('Action ➡️ ', action);
+  console.log('Name ➡️ ', resourceName);
+  console.log('Description ➡️ ', resourceDescription);
+  console.log('Availability ➡️ ', resourceAvailable);
+  console.log('Price ➡️ ', resourcePrice);
+  console.log('Price unit ➡️ ', resourcePriceUnit);
+  console.log('------------------------------');
+
+  if (action !== 'create') {
+    return res.status(400).json({ ok: false, error: 'Only create is implemented right now' });
+  }
+
+
+
   try {
-    const { rows } = await pool.query(insertSql, [resourceName, resourceDescription, resourceAvailable, resourcePrice, resourcePriceUnit]);
-    res.status(201).json({ ok: true, data: rows[0] });
+    const insertSql = `
+      INSERT INTO resources (name, description, available, price, price_unit)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, name, description, available, price, price_unit, created_at
+    `;
+    const params = [
+      resourceName,
+      resourceDescription,
+      Boolean(resourceAvailable),
+      Number(resourcePrice),
+      resourcePriceUnit
+    ];
+
+    const { rows } = await pool.query(insertSql, params);
+    const created = rows[0];
+
+    return res.status(201).json({ ok: true, data: created });
   } catch (err) {
-    console.error("DB insert failed:", err.message);
-    res.status(500).json({ ok: false, error: "Database error" });
+    console.error('DB insert failed:', err);
+    return res.status(500).json({ ok: false, error: 'Database error' });
   }
 });
 
-// --- Start server after DB ready ---
-waitForDb().then(() => {
-  app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`));
+// --- Fallback 404 for unknown API routes ---
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// --- Start server ---
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
 });

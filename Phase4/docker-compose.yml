@@ -14,8 +14,6 @@ services:
     build: .
     image: bs-phase4
     container_name: booking-system-phase4-web
-    depends_on:
-      - database
     environment:
       PGHOST: database
       PGPORT: ${PGPORT}
@@ -27,7 +25,6 @@ services:
     volumes:
       - .:/usr/src/app
       - /usr/src/app/node_modules
-
   database:
     image: postgres:latest
     container_name: booking-system-phase4-db
@@ -39,6 +36,7 @@ services:
       - "${EPGPORT}:${PGPORT}"
     volumes:
       - pgroot:/var/lib/postgresql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
 
 volumes:
   pgroot: {}
